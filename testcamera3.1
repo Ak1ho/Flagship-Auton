@@ -68,7 +68,7 @@ class RobotDetector:
 picam2 = Picamera2()
 
 # Configure the camera to capture video (640x480 resolution)
-video_config = picam2.create_video_configuration(main={"size": (640, 480)})
+video_config = picam2.create_video_configuration(main={"size": (640, 480), "format": "RGB888"})
 picam2.configure(video_config)
 
 # Start the camera for live capture

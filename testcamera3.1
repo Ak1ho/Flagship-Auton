@@ -1,0 +1,98 @@
+from picamera2 import Picamera2
+import cv2
+import numpy as np
+
+class RobotDetector:
+    def __init__(self):
+        # Initialize background subtractor for motion detection
+        self.backSub = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=50, detectShadows=False)
+        # Optional: Define specific color ranges if battle bots have distinctive colors
+        # self.lower_color = np.array([H_min, S_min, V_min])
+        # self.upper_color = np.array([H_max, S_max, V_max])
+
+    def detect_robot(self, frame):
+        # Apply background subtraction to get the foreground mask
+        fg_mask = self.backSub.apply(frame)
+
+        # Apply morphological operations to reduce noise
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        fg_mask = cv2.morphologyEx(fg_mask, cv2.MORPH_OPEN, kernel)
+        fg_mask = cv2.dilate(fg_mask, kernel, iterations=2)
+
+        # Optional: Combine with color detection if needed
+        # hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        # color_mask = cv2.inRange(hsv, self.lower_color, self.upper_color)
+        # fg_mask = cv2.bitwise_and(fg_mask, fg_mask, mask=color_mask)
+
+        # Find contours in the foreground mask
+        contours, _ = cv2.findContours(fg_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        detected = False
+        direction = None
+
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area > 500:  # Adjust the area threshold as needed
+                # Approximate the contour to reduce the number of points
+                peri = cv2.arcLength(c, True)
+                approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+
+                # Filter based on the number of sides or aspect ratio if battle bots have a specific shape
+                # For example, if battle bots are rectangular:
+                if len(approx) == 4:
+                    # Compute the bounding box of the contour and use it to compute the aspect ratio
+                    x, y, w, h = cv2.boundingRect(approx)
+                    aspect_ratio = w / float(h)
+                    # Filter based on aspect ratio if needed
+                    if 0.8 < aspect_ratio < 1.2:  # Assuming battle bots are approximately square
+                        M = cv2.moments(c)
+                        if M["m00"] != 0:
+                            cX = int(M["m10"] / M["m00"])
+                            cY = int(M["m01"] / M["m00"])
+
+                            # Determine direction based on the position of the contour center
+                            frame_center = frame.shape[1] / 2
+                            direction = 'left' if cX < frame_center else 'right'
+
+                            # Draw the contour and center point
+                            cv2.drawContours(frame, [approx], -1, (0, 255, 0), 2)
+                            cv2.circle(frame, (cX, cY), 7, (255, 0, 0), -1)
+                            cv2.putText(frame, f'Direction: {direction}', (10, 30),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                            detected = True
+                            break  # Stop after finding one battle bot (optional)
+
+        return detected, direction
+
+# Initialize the Picamera2 object for camera capture
+picam2 = Picamera2()
+
+# Configure the camera to capture video (640x480 resolution)
+video_config = picam2.create_video_configuration(main={"size": (640, 480)})
+picam2.configure(video_config)
+
+# Start the camera for live capture
+picam2.start()
+
+# Initialize the robot detector
+robot_detector = RobotDetector()
+
+# Display live video feed with detection logic
+try:
+    while True:
+        # Capture a frame from the camera
+        frame = picam2.capture_array()
+
+        # Perform robot detection on the captured frame
+        detected, direction = robot_detector.detect_robot(frame)
+
+        # Show the frame with detected contour and direction
+        cv2.imshow("Live Video", frame)
+
+        # Break the loop when the 'q' key is pressed
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+finally:
+    # Stop the camera and close the OpenCV window
+    picam2.stop()
+    cv2.destroyAllWindows()

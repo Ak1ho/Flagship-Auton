@@ -31,7 +31,6 @@ def main():
     # Initialize remote control
     remote = RemoteControl()
 
-    # Start capturing video from default camera (index 0)
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Failed to open camera.")
@@ -52,7 +51,6 @@ def main():
             remote.update_command()
             if remote.is_override_active():
                 # If manual override, just read commands and pass to motors
-                # (Implementation depends on how you define the commands)
                 cmd = remote.get_command()
                 if cmd:
                     # e.g. interpret cmd like ('FORWARD', 0.8)

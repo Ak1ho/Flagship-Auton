@@ -1,72 +1,35 @@
-# motor_control.py
-import RPi.GPIO as GPIO
+import logging
 import time
 
-class MotorControl:
+class MotorController:
     def __init__(self):
-        GPIO.setmode(GPIO.BCM)
-        # Define GPIO pins for ESCs
-        self.ESC_PINS = {
-            'wheel_1': 17, #these are test pins
-            'wheel_2': 18,
-            'wheel_3': 27,
-            'wheel_4': 22,
-            'weapon': 23
-        }
+        # Initialize your motor control hardware here.
+        # For example, set up GPIO pins if using a Raspberry Pi.
+        # This example uses dummy functions.
+        logging.info("MotorController initialized.")
 
-        # Setup GPIO pins
-        for pin in self.ESC_PINS.values():
-            GPIO.setup(pin, GPIO.OUT)
+    def move_forward(self):
+        logging.info("Motors: moving forward.")
+        # Implement motor control logic here
+        # e.g., set motor speeds forward
+        time.sleep(0.1)
 
-        # Initialize PWM signals
-        self.pwms = {}
-        for name, pin in self.ESC_PINS.items():
-            pwm = GPIO.PWM(pin, 50)  # 50 Hz
-            pwm.start(7.5)  # Neutral signal for ESCs
-            self.pwms[name] = pwm
+    def move_backward(self):
+        logging.info("Motors: moving backward.")
+        # Implement motor control logic here
+        time.sleep(0.1)
 
-    def set_speed(self, name, speed):
-        # Convert speed (-100 to 100) to duty cycle
-        duty_cycle = self.speed_to_duty_cycle(speed)
-        self.pwms[name].ChangeDutyCycle(duty_cycle)
+    def turn_left(self):
+        logging.info("Motors: turning left.")
+        # Implement turning logic (e.g., slow left motor, fast right motor)
+        time.sleep(0.1)
 
-    def speed_to_duty_cycle(self, speed):
-        # Map speed (-100 to 100) to duty cycle (5% to 10%)
-        # Neutral (stop) is at 7.5%
-        return 7.5 + (speed / 100) * 2.5
+    def turn_right(self):
+        logging.info("Motors: turning right.")
+        # Implement turning logic (e.g., fast left motor, slow right motor)
+        time.sleep(0.1)
 
-    def move_towards(self, direction):
-        # Implement movement logic based on direction
-        # For simplicity, we'll move forward
-        speed = 50  # Adjust speed as needed
-        self.set_speed('wheel_1', speed)
-        self.set_speed('wheel_2', speed)
-        self.set_speed('wheel_3', speed)
-        self.set_speed('wheel_4', speed)
-
-    def search_pattern(self):
-        # Rotate in place to search for the robot
-        speed = 30
-        self.set_speed('wheel_1', speed)
-        self.set_speed('wheel_2', -speed)
-        self.set_speed('wheel_3', speed)
-        self.set_speed('wheel_4', -speed)
-
-    def set_wheel_speeds(self, speeds):
-        # Speeds is a dictionary with keys 'wheel_1', 'wheel_2', etc.
-        for wheel, speed in speeds.items():
-            self.set_speed(wheel, speed)
-
-    def set_weapon_speed(self, speed):
-        self.set_speed('weapon', speed)
-
-    def activate_weapon(self, speed):
-        self.set_speed('weapon', speed)
-
-    def stop_motors(self):
-        for pwm in self.pwms.values():
-            pwm.ChangeDutyCycle(7.5)  # Neutral signal
-
-    def cleanup(self):
-        self.stop_motors()
-        GPIO.cleanup()
+    def stop(self):
+        logging.info("Motors: stopping.")
+        # Implement logic to stop the motors
+        time.sleep(0.1)

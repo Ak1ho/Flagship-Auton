@@ -1,70 +1,96 @@
+### main.py
+
 import cv2
+import threading
 import time
-from motor_control import MotorControl
+import logging
+
+from camera_module import CameraModule
 from robot_detection import RobotDetector
+from motor_control import MotorController
 from remote_control import RemoteControl
-import RPi.GPIO as GPIO
 
-def main():
-    GPIO.setmode(GPIO.BCM)
-    MODE_PIN = 24  # GPIO pin connected to the mode switch
-    GPIO.setup(MODE_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-    # Initialize modules
-    motor_control = MotorControl()
-    robot_detector = RobotDetector()
-    remote_control = RemoteControl()
+# Global flag to allow switching between autonomous and remote modes
+AUTONOMOUS_MODE = True
 
-    # Open camera
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        print("Camera not accessible")
-        return
+def autonomous_loop(camera, detector, motor):
+    """Main loop for autonomous operation."""
+    logging.info("Starting autonomous mode.")
+    while True:
+        frame = camera.get_frame()
+        if frame is None:
+            logging.error("No frame captured from camera.")
+            continue
 
-    try:
-        while True:
-            # Check mode switch
-            if GPIO.input(MODE_PIN) == GPIO.LOW:
-                mode = 'manual'
+        # Detect opponent (returns center position if detected, else None)
+        target = detector.detect_opponent(frame)
+
+        if target:
+            logging.info(f"Target detected at {target}.")
+            # Simple decision-making: if target is left/right of center, adjust wheel speeds accordingly
+            frame_center = frame.shape[1] // 2
+            if target[0] < frame_center - 20:
+                logging.info("Turning left.")
+                motor.turn_left()
+            elif target[0] > frame_center + 20:
+                logging.info("Turning right.")
+                motor.turn_right()
             else:
-                mode = 'autonomous'
+                logging.info("Moving forward.")
+                motor.move_forward()
+        else:
+            logging.info("No target detected, stopping.")
+            motor.stop()
 
-            if mode == 'autonomous':
-                # Autonomous mode
-                ret, frame = cap.read()
-                if not ret:
-                    print("Failed to read frame from camera")
-                    break
+        # Display frame with detection overlay (for debugging; remove in final autonomous deployment)
+        cv2.imshow("Autonomous View", frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
 
-                # Detect robot in the frame
-                detected, direction = robot_detector.detect_robot(frame)
+        time.sleep(0.1)  # adjust loop speed as needed
 
-                if detected:
-                    print("Detected!")
-                    motor_control.move_towards(direction)
-                    motor_control.activate_weapon(speed=100)
-                else:
-                    print("Searching")
-                    motor_control.search_pattern()
-                time.sleep(0.1)
-            else:
-                # Manual mode
-                remote_control.update_controls()
-                motor_speeds = remote_control.get_motor_speeds()
-                weapon_speed = remote_control.get_weapon_speed()
-                motor_control.set_wheel_speeds(motor_speeds)
-                motor_control.set_weapon_speed(weapon_speed)
-                time.sleep(0.05)
+    camera.release()
+    cv2.destroyAllWindows()
 
-    except KeyboardInterrupt:
-        print("Program interrupted by user")
-
-    finally:
-        cap.release()
-        cv2.destroyAllWindows()
-        motor_control.cleanup()
-        GPIO.cleanup()
-        remote_control.cleanup()
+def remote_control_loop(remote, motor):
+    """Loop for remote control operation."""
+    logging.info("Starting remote control mode.")
+    while True:
+        cmd = remote.get_command()
+        if cmd == 'forward':
+            motor.move_forward()
+        elif cmd == 'backward':
+            motor.move_backward()
+        elif cmd == 'left':
+            motor.turn_left()
+        elif cmd == 'right':
+            motor.turn_right()
+        elif cmd == 'stop':
+            motor.stop()
+        elif cmd == 'exit':
+            break
+        else:
+            logging.warning("Unknown command received.")
+        time.sleep(0.1)
 
 if __name__ == "__main__":
-    main()
+    try:
+        # Initialize modules
+        camera = CameraModule(0)  # 0 for default camera
+        detector = RobotDetector()
+        motor = MotorController()
+        remote = RemoteControl()
+
+        # Start the appropriate control loop (could also run both in separate threads with a mode switch)
+        if AUTONOMOUS_MODE:
+            autonomous_loop(camera, detector, motor)
+        else:
+            remote_control_loop(remote, motor)
+
+    except KeyboardInterrupt:
+        logging.info("Shutting down system.")
+    except Exception as e:
+        logging.exception("An error occurred in the main loop: %s", e)

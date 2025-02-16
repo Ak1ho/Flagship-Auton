@@ -1,8 +1,8 @@
-# Flagship Auton
+Flagship Auton
 
 This repository contains the source code for an autonomous robotics system built on a horizontal spinner weapon platform with two wheels per side. The system uses a camera module to detect opponents and autonomously navigate toward them. There is also support for remote (manual) control as an override.
 
-## Modules
+Modules
 
 - main.py  
   Entry point that ties together the camera module, robot detection, and motor control. It includes a main loop that processes camera frames and decides movement commands.
@@ -22,7 +22,7 @@ This repository contains the source code for an autonomous robotics system built
 - test_camera.py  
   A test script to verify that the camera module and detection overlay are working as expected.
 
-#Usage
+Usage
 
 1. Install dependencies:
    pip3 install opencv-python

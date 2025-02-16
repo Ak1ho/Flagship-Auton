@@ -1,96 +1,107 @@
-### main.py
+"""
+main.py
+Entry point for the autonomous robot behavior.
+Sets up camera, detection, motor control, and remote override logic.
+Implements a basic state machine for robot behavior.
+"""
 
-import cv2
-import threading
 import time
-import logging
-
-from camera_module import CameraModule
-from robot_detection import RobotDetector
+import cv2
 from motor_control import MotorController
+from robot_detection import OpponentDetector
 from remote_control import RemoteControl
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+def main():
+    # Initialize hardware modules
+    # Example pin definitions (adjust as per your hardware)
+    left_motor_pins = (17, 18)    # Example GPIO pins
+    right_motor_pins = (27, 22)
+    spinner_motor_pin = 23
 
-# Global flag to allow switching between autonomous and remote modes
-AUTONOMOUS_MODE = True
+    motor_controller = MotorController(
+        left_motor_pins, right_motor_pins, spinner_motor_pin
+    )
 
-def autonomous_loop(camera, detector, motor):
-    """Main loop for autonomous operation."""
-    logging.info("Starting autonomous mode.")
-    while True:
-        frame = camera.get_frame()
-        if frame is None:
-            logging.error("No frame captured from camera.")
-            continue
+    # Initialize detection
+    detector = OpponentDetector(
+        color_lower=(0, 120, 70),   # Example HSV range for red-ish color
+        color_upper=(10, 255, 255)
+    )
 
-        # Detect opponent (returns center position if detected, else None)
-        target = detector.detect_opponent(frame)
+    # Initialize remote control
+    remote = RemoteControl()
 
-        if target:
-            logging.info(f"Target detected at {target}.")
-            # Simple decision-making: if target is left/right of center, adjust wheel speeds accordingly
-            frame_center = frame.shape[1] // 2
-            if target[0] < frame_center - 20:
-                logging.info("Turning left.")
-                motor.turn_left()
-            elif target[0] > frame_center + 20:
-                logging.info("Turning right.")
-                motor.turn_right()
-            else:
-                logging.info("Moving forward.")
-                motor.move_forward()
-        else:
-            logging.info("No target detected, stopping.")
-            motor.stop()
+    # Start capturing video from default camera (index 0)
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        print("Failed to open camera.")
+        return
 
-        # Display frame with detection overlay (for debugging; remove in final autonomous deployment)
-        cv2.imshow("Autonomous View", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            break
+    # Basic robot states
+    state = "IDLE"
+    motor_controller.spin_weapon(on=False)
 
-        time.sleep(0.1)  # adjust loop speed as needed
-
-    camera.release()
-    cv2.destroyAllWindows()
-
-def remote_control_loop(remote, motor):
-    """Loop for remote control operation."""
-    logging.info("Starting remote control mode.")
-    while True:
-        cmd = remote.get_command()
-        if cmd == 'forward':
-            motor.move_forward()
-        elif cmd == 'backward':
-            motor.move_backward()
-        elif cmd == 'left':
-            motor.turn_left()
-        elif cmd == 'right':
-            motor.turn_right()
-        elif cmd == 'stop':
-            motor.stop()
-        elif cmd == 'exit':
-            break
-        else:
-            logging.warning("Unknown command received.")
-        time.sleep(0.1)
-
-if __name__ == "__main__":
     try:
-        # Initialize modules
-        camera = CameraModule(0)  # 0 for default camera
-        detector = RobotDetector()
-        motor = MotorController()
-        remote = RemoteControl()
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                print("Camera read error. Stopping.")
+                break
 
-        # Start the appropriate control loop (could also run both in separate threads with a mode switch)
-        if AUTONOMOUS_MODE:
-            autonomous_loop(camera, detector, motor)
-        else:
-            remote_control_loop(remote, motor)
+            # Update remote control commands
+            remote.update_command()
+            if remote.is_override_active():
+                # If manual override, just read commands and pass to motors
+                # (Implementation depends on how you define the commands)
+                cmd = remote.get_command()
+                if cmd:
+                    # e.g. interpret cmd like ('FORWARD', 0.8)
+                    pass
+                else:
+                    motor_controller.stop()
+                continue
+
+            # AUTONOMOUS BEHAVIOR
+            # 1. Detect opponent
+            center = detector.detect_opponent(frame)
+
+            if center:
+                # Robot logic if opponent is seen
+                (cx, cy) = center
+                frame_center_x = frame.shape[1] // 2
+                # Simple strategy: if center is left of mid, turn left; if right, turn right; if center, go forward
+                # Fine-tune turning threshold as needed.
+                if abs(cx - frame_center_x) < 50:
+                    # Opponent roughly in front
+                    motor_controller.set_speed(0.5, 0.5)  # Move forward
+                    motor_controller.spin_weapon(on=True)
+                else:
+                    # Turn towards the opponent
+                    if cx < frame_center_x:
+                        motor_controller.set_speed(-0.3, 0.3)  # Turn left
+                    else:
+                        motor_controller.set_speed(0.3, -0.3)  # Turn right
+                    motor_controller.spin_weapon(on=True)
+            else:
+                # Opponent not found - spin in place looking for target
+                motor_controller.set_speed(0.3, -0.3)
+                motor_controller.spin_weapon(on=False)
+
+            # Visual feedback (optional)
+            cv2.imshow('Robot Camera', frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                # Quit if 'q' is pressed on the keyboard
+                break
+
+            time.sleep(0.02)  # small delay for loop
 
     except KeyboardInterrupt:
-        logging.info("Shutting down system.")
-    except Exception as e:
-        logging.exception("An error occurred in the main loop: %s", e)
+        print("Interrupted by user.")
+    finally:
+        # Cleanup
+        cap.release()
+        cv2.destroyAllWindows()
+        motor_controller.cleanup()
+
+if __name__ == "__main__":
+    main()

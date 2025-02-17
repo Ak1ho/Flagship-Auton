@@ -18,7 +18,7 @@ try:
         set_motor_speed(i)
         time.sleep(0.2)
 
-    time.sleep(3)
+    time.sleep(5)
 
 except KeyboardInterrupt:
     pass

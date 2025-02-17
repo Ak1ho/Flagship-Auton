@@ -1,7 +1,7 @@
 from gpiozero import PWMOutputDevice
 import time
 
-PIN = 26
+PIN = 27
 
 motor = PWMOutputDevice(PIN, frequency=100)
 
@@ -10,11 +10,11 @@ def set_motor_speed(duty_cycle):
     print(f"Motor speed set to {duty_cycle}%")
 
 try:
-    for i in range(100, 50, 5):
+    for i in range(100, 50, -1):
         set_motor_speed(i)
         time.sleep(0.2)
 
-    for i in range(50, 100, -5):
+    for i in range(50, 100, 1):
         set_motor_speed(i)
         time.sleep(0.2)
 

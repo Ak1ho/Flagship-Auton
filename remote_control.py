@@ -16,7 +16,6 @@ class RemoteControl:
         self.input_thread.start()
 
     def stop(self):
-
         self._stop_thread = True
         if self.input_thread:
             self.input_thread.join()

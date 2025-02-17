@@ -10,26 +10,21 @@ class RobotDetector:
         if frame is None:
             return None
 
-        # Convert to HSV color space for easier color segmentation
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(hsv, self.lower_color, self.upper_color)
-        # Optional morphological operations to reduce noise
         kernel = np.ones((5, 5), np.uint8)
         mask = cv2.erode(mask, kernel, iterations=1)
         mask = cv2.dilate(mask, kernel, iterations=1)
 
-        # Find contours
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
         if not contours:
             return None
 
-        # Find the largest contour
         largest_contour = max(contours, key=cv2.contourArea)
         if cv2.contourArea(largest_contour) < 50:  # Minimum area threshold
             return None
 
-        # Compute center of that contour
         M = cv2.moments(largest_contour)
         if M["m00"] == 0:
             return None

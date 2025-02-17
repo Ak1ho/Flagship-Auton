@@ -1,4 +1,4 @@
-from gpiozero import PWMOuputDevice
+from gpiozero import PWMOutputDevice
 import time
 
 PIN = 26

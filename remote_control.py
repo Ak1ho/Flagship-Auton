@@ -11,17 +11,12 @@ class RemoteControl:
         self.input_thread = None
 
     def start(self):
-        """
-        Start the input thread that listens for manual override commands.
-        """
         self._stop_thread = False
         self.input_thread = threading.Thread(target=self._listen_for_input, daemon=True)
         self.input_thread.start()
 
     def stop(self):
-        """
-        Signal the input thread to stop.
-        """
+
         self._stop_thread = True
         if self.input_thread:
             self.input_thread.join()

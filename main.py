@@ -1,49 +1,81 @@
-import time
 import cv2
+import time
+
 from camera_module import CameraModule
 from robot_detection import RobotDetector
 from motor_control import MotorController
 from remote_control import RemoteControl
 
 def main():
-    left_pins=(17,18)
-    right_pins=(27,22)
-    weapon_pin=23
-    motor=MotorController(left_pins,right_pins,weapon_pin)
-    detector=RobotDetector()
-    remote=RemoteControl()
-    cam=CameraModule(0)
-    state="IDLE"
-    motor.spin_weapon(False)
-    while True:
-        frame=cam.read_frame()
-        if frame is None:break
-        remote.update_command()
-        if remote.is_override_active():
-            c=remote.get_command()
-            if c:pass
-            else:motor.stop()
-            continue
-        ctr=detector.detect(frame)
-        if ctr:
-            cx,cy=ctr
-            mid=frame.shape[1]//2
-            if abs(cx-mid)<50:
-                motor.set_speed(0.5,0.5)
-                motor.spin_weapon(True)
-            else:
-                if cx<mid:motor.set_speed(-0.3,0.3)
-                else:motor.set_speed(0.3,-0.3)
-                motor.spin_weapon(True)
-        else:
-            motor.set_speed(0.3,-0.3)
-            motor.spin_weapon(False)
-        cv2.imshow("Robot",frame)
-        if cv2.waitKey(1)&0xFF==ord('q'):break
-        time.sleep(0.02)
-    cam.release()
-    cv2.destroyAllWindows()
-    motor.cleanup()
+    camera = CameraModule(camera_index=0, width=640, height=480)
+    detector = RobotDetector()
+    motors = MotorController()
+    remote = RemoteControl()
 
-if __name__=="__main__":
+    camera.start()
+    remote.start()
+
+    autonomous_mode = True
+
+    print("Starting main loop. Press 'r' to toggle remote override, 'k' for kill switch, or 'q' to quit.")
+    try:
+        while True:
+            # Check if kill switch has been pressed
+            if remote.kill_switch:
+                print("Kill switch activated. Stopping all motors.")
+                motors.stop_all()
+                break
+
+            if remote.remote_override:
+
+                autonomous_mode = False
+                command = remote.last_command
+                if command == 'w':
+                    motors.drive_forward(speed=0.5)
+                elif command == 's':
+                    motors.drive_backward(speed=0.5)
+                elif command == 'a':
+                    motors.turn_left(speed=0.5)
+                elif command == 'd':
+                    motors.turn_right(speed=0.5)
+                else:
+                    motors.stop_drivetrain()
+
+            else:
+                autonomous_mode = True
+                frame = camera.get_frame()
+                if frame is None:
+                    continue
+                opponent_center = detector.detect_opponent(frame)
+                height, width, _ = frame.shape
+
+                if opponent_center:
+                    cx, cy = opponent_center
+                    center_x = width // 2
+                    diff_x = cx - center_x
+
+                    motors.spin_up(speed=1.0)
+
+                    if abs(diff_x) < 40:
+                        motors.drive_forward(speed=0.5)
+                    elif diff_x < 0:
+                        motors.turn_left(speed=0.4)
+                    else:
+                        motors.turn_right(speed=0.4)
+                else:
+                    motors.spin_up(speed=0.8)
+                    motors.turn_left(speed=0.3)
+
+            time.sleep(0.1)
+
+    except KeyboardInterrupt:
+        print("Keyboard interrupt received. Exiting...")
+
+    finally:
+        motors.stop_all()
+        camera.release()
+        remote.stop()
+        cv2.destroyAllWindows()
+
+if __name__ == '__main__':
     main()

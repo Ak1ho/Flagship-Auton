@@ -1,0 +1,42 @@
+import RPi.GPIO as GPIO
+import time
+
+# Pin and frequency setup
+ESC_PIN = 18
+PWM_FREQUENCY = 50  # 50Hz is typical for servo/ESC signals
+
+GPIO.setmode(GPIO.BCM)       # Use Broadcom pin numbering
+GPIO.setup(ESC_PIN, GPIO.OUT)
+
+# Initialize software PWM on the ESC pin at 50 Hz
+pwm = GPIO.PWM(ESC_PIN, PWM_FREQUENCY)
+pwm.start(0)  # Start with 0% duty cycle (off)
+
+try:
+    print("Starting ESC calibration...")
+    
+    # 1) Full throttle (~10% duty cycle for 2 ms pulse in a 20 ms period)
+    #    This signals 'max throttle' to the ESC
+    pwm.ChangeDutyCycle(10)  
+    print("Full throttle signal sent. Waiting 2 seconds...")
+    time.sleep(2)
+    
+    # 2) Zero throttle (~5% duty cycle for 1 ms pulse in a 20 ms period)
+    #    This signals 'min throttle' to the ESC
+    pwm.ChangeDutyCycle(5)
+    print("Zero throttle signal sent. Waiting 2 seconds...")
+    time.sleep(2)
+
+    print("ESC should now be calibrated.")
+    
+    # Set throttle to zero (or off) just to be safe
+    pwm.ChangeDutyCycle(0)
+    print("Throttle set to 0%. Waiting a moment...")
+    time.sleep(2)
+
+except KeyboardInterrupt:
+    pass
+finally:
+    pwm.stop()
+    GPIO.cleanup()
+    print("Calibration script finished, GPIO cleaned up.")

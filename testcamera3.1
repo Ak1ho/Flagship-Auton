@@ -32,7 +32,7 @@ class RobotDetector:
 
         for c in contours:
             area = cv2.contourArea(c)
-            if area > 500:  # Adjust the area threshold as needed
+            if area > 100:  # Adjust the area threshold as needed
                 # Approximate the contour to reduce the number of points
                 peri = cv2.arcLength(c, True)
                 approx = cv2.approxPolyDP(c, 0.02 * peri, True)

@@ -1,47 +1,51 @@
-import threading
-import sys
-import time
+# remote_control.py
+from ibus import IBUSReceiver
 
 class RemoteControl:
-    def __init__(self):
-        self.remote_override = False
-        self.kill_switch = False
-        self.last_command = None
-        self._stop_thread = False
-        self.input_thread = None
+    """
+    Reads from iBus (via a real UART).
+    Provides a method to get mode, get movement, and get killswitch states.
+    """
+    def __init__(self,
+                 uart_port='/dev/ttyAMA0',
+                 baud=115200,
+                 num_channels=6,
+                 mode_channel=4,
+                 x_channel=0,
+                 y_channel=1,
+                 rotate_channel=3,
+                 killswitch_channel=5):
+        self.ibus = IBUSReceiver(uart_port=uart_port, baud=baud, num_channels=num_channels)
+        self.mode_channel = mode_channel
+        self.x_channel = x_channel
+        self.y_channel = y_channel
+        self.rotate_channel = rotate_channel
+        self.killswitch_channel = killswitch_channel
 
-    def start(self):
-        self._stop_thread = False
-        self.input_thread = threading.Thread(target=self._listen_for_input, daemon=True)
-        self.input_thread.start()
+    def update(self):
+        # Now we read from the serial buffer and parse iBus frames
+        self.ibus.update()
 
-    def stop(self):
-        self._stop_thread = True
-        if self.input_thread:
-            self.input_thread.join()
+    def get_mode(self):
+        """
+        For example, channel 4 above 1500 => auton
+        """
+        val = self.ibus.get_channel(self.mode_channel)
+        return 1 if val > 1500 else 0
 
-    def _listen_for_input(self):
-        print("Remote Control Thread Started. Type 'r' to toggle remote mode, 'k' for kill, 'q' to quit.")
-        while not self._stop_thread:
-            if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
-                user_input = sys.stdin.readline().strip().lower()
-                if user_input == 'r':
-                    self.remote_override = not self.remote_override
-                    print(f"Remote override set to: {self.remote_override}")
-                elif user_input == 'k':
-                    self.kill_switch = True
-                    print("KILL SWITCH ENGAGED!")
-                elif user_input in ['w', 'a', 's', 'd']:
-                    self.last_command = user_input
-                elif user_input == 'q':
-                    self.kill_switch = True
-                    print("Quitting remote control...")
-                    break
-            time.sleep(0.05)
+    def get_movement(self):
+        x_val = self.ibus.get_channel(self.x_channel)
+        y_val = self.ibus.get_channel(self.y_channel)
+        r_val = self.ibus.get_channel(self.rotate_channel)
 
-        self._stop_thread = True
+        def norm(v):
+            return (v - 1500) / 500.0  # 1000..2000 -> -1..+1
 
-try:
-    import select
-except ImportError:
-    pass
+        return norm(x_val), norm(y_val), norm(r_val)
+
+    def get_killswitch(self):
+        val = self.ibus.get_channel(self.killswitch_channel)
+        return (val > 1500)
+
+    def close(self):
+        self.ibus.close()

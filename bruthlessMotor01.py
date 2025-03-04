@@ -19,11 +19,6 @@ time.sleep(3)  # Allow some time for setup
 
 # --- 3. Function to set ESC signal ---
 def set_esc_signal(duty_cycle, esc_index=None):
-    """
-    Set the PWM duty cycle for the ESCs.
-    Valid range for most ESCs: 5% (zero throttle) to 10% (full throttle)
-    If esc_index is None, all ESCs are updated.
-    """
     if esc_index is None:
         # Update all ESCs
         for i, pwm in enumerate(pwm_objects):

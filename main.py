@@ -1,81 +1,126 @@
-import cv2
-import time
+# main.py
 
+import time
+import cv2
 from camera_module import CameraModule
-from robot_detection import RobotDetector
+from robot_detection import RobotDetector  # <-- Make sure this is the advanced version
 from motor_control import MotorController
 from remote_control import RemoteControl
 
 def main():
+    # -----------------------------
+    # 1) Initialize Hardware
+    # -----------------------------
+    # Example BCM pins for the 4 drive motors
+    motor_pins = [17, 27, 22, 23]
+    # BCM pin for the spinner weapon
+    spinner_pin = 24
+
+    # Create MotorController (RPi.GPIO PWM)
+    motor_controller = MotorController(motor_pins, spinner_pin, pwm_freq=1000)
+
+    # Create CameraModule (OpenCV capture)
     camera = CameraModule(camera_index=0, width=640, height=480)
-    detector = RobotDetector()
-    motors = MotorController()
-    remote = RemoteControl()
 
-    camera.start()
-    remote.start()
+    # Create our advanced classical RobotDetector
+    # Adjust parameters as needed (e.g., color filtering, thresholds)
+    detector = RobotDetector(
+        min_area=500,
+        use_color_filter=False,
+        # If you want to enable color filtering for a particular color, set:
+        # use_color_filter=True,
+        # lower_color=(0, 100, 100),
+        # upper_color=(10, 255, 255),
+        history=500,
+        var_threshold=16
+    )
 
-    autonomous_mode = True
+    # Single-pin FlySky iBus (Placeholder or real UART approach in ibus.py)
+    # Also includes a kill switch channel
+    remote_control = RemoteControl(
+        ibus_gpio_pin=21,   # or /dev/ttyAMA0 if using a real UART approach
+        mode_channel=4,     # channel for manual/auton toggle
+        x_channel=0,
+        y_channel=1,
+        rotate_channel=3,
+        killswitch_channel=5
+    )
 
-    print("Starting main loop. Press 'r' to toggle remote override, 'k' for kill switch, or 'q' to quit.")
+    # Start spinner at full throttle (100% duty)
+    motor_controller.start_spinner()
+
     try:
         while True:
-            # Check if kill switch has been pressed
-            if remote.kill_switch:
-                print("Kill switch activated. Stopping all motors.")
-                motors.stop_all()
-                break
+            # -----------------------------
+            # 2) Read RC input
+            # -----------------------------
+            remote_control.update()
 
-            if remote.remote_override:
+            # -----------------------------
+            # 3) Check Kill Switch
+            # -----------------------------
+            if remote_control.get_killswitch():
+                # Immediately stop all motors and spinner
+                motor_controller.stop_all()
+                motor_controller.stop_spinner()
+                # Wait a bit and continue checking in next loop iteration
+                time.sleep(0.1)
+                continue
 
-                autonomous_mode = False
-                command = remote.last_command
-                if command == 'w':
-                    motors.drive_forward(speed=0.5)
-                elif command == 's':
-                    motors.drive_backward(speed=0.5)
-                elif command == 'a':
-                    motors.turn_left(speed=0.5)
-                elif command == 'd':
-                    motors.turn_right(speed=0.5)
-                else:
-                    motors.stop_drivetrain()
+            # -----------------------------
+            # 4) Manual vs. Autonomous
+            # -----------------------------
+            mode = remote_control.get_mode()
+
+            if mode == 0:
+                # ---- MANUAL MODE ----
+                x_cmd, y_cmd, r_cmd = remote_control.get_movement()
+                motor_controller.xdrive_move(x_cmd, y_cmd, r_cmd)
 
             else:
-                autonomous_mode = True
+                # ---- AUTONOMOUS MODE ----
                 frame = camera.get_frame()
-                if frame is None:
-                    continue
-                opponent_center = detector.detect_opponent(frame)
-                height, width, _ = frame.shape
+                detection = detector.detect_robot(frame)
 
-                if opponent_center:
-                    cx, cy = opponent_center
-                    center_x = width // 2
-                    diff_x = cx - center_x
-
-                    motors.spin_up(speed=1.0)
-
-                    if abs(diff_x) < 40:
-                        motors.drive_forward(speed=0.5)
-                    elif diff_x < 0:
-                        motors.turn_left(speed=0.4)
-                    else:
-                        motors.turn_right(speed=0.4)
+                if detection is None:
+                    # No robot detected => spin in place searching
+                    motor_controller.search_spin()
                 else:
-                    motors.spin_up(speed=0.8)
-                    motors.turn_left(speed=0.3)
+                    # Move towards the detected robot
+                    cx, cy = detection
+                    height, width, _ = frame.shape
+                    center_x = width // 2
+                    center_y = height // 2
 
-            time.sleep(0.1)
+                    # Error signals: how far from center
+                    error_x = (cx - center_x) / float(center_x)  # range ~ -1..+1
+                    error_y = (center_y - cy) / float(center_y)  # range ~ -1..+1
+
+                    # Simple proportional gain
+                    kP = 0.4
+                    move_x = kP * error_x
+                    move_y = kP * error_y
+                    rotate = 0.0  # no rotation in this example
+
+                    # Clamp speeds
+                    def clamp(val, low=-1.0, high=1.0):
+                        return max(low, min(high, val))
+                    move_x = clamp(move_x)
+                    move_y = clamp(move_y)
+
+                    motor_controller.xdrive_move(move_x, move_y, rotate)
+
+            # Sleep briefly to avoid 100% CPU usage
+            time.sleep(0.02)
 
     except KeyboardInterrupt:
-        print("Keyboard interrupt received. Exiting...")
+        print("Shutting down...")
 
     finally:
-        motors.stop_all()
+        # Cleanup on exit
+        remote_control.close()
         camera.release()
-        remote.stop()
-        cv2.destroyAllWindows()
+        motor_controller.shutdown()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

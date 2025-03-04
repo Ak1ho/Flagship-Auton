@@ -1,5 +1,3 @@
-# main.py
-
 import time
 import cv2
 from camera_module import CameraModule
